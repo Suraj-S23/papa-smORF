@@ -1,0 +1,14 @@
+preprocessing:
+  chunk_size: 5000
+  input:
+    fasta_dir: "data/fasta"
+    gff_dir: "data/gff"
+  output:
+    dir: "data/processed"
+  features:
+    - sequence
+    - sample_id
+    - chunk_id
+    - target
+    - orf_positions
+    - start_codon_positions
