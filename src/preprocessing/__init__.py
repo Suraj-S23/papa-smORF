@@ -1,9 +1,12 @@
-# src/preprocessing/__init__.py
-"""
-Preprocessing module for DNA sequence analysis
-"""
-
+from .utils import setup_logger, load_config, setup_directories, get_file_pairs
 from .sequence_processor import SequenceProcessor
-from .utils import setup_logger, load_config
+from .parallel_processor import ParallelSequenceProcessor
 
-__all__ = ['SequenceProcessor', 'setup_logger', 'load_config']
+__all__ = [
+    'setup_logger',
+    'load_config',
+    'setup_directories',
+    'get_file_pairs',
+    'SequenceProcessor',
+    'ParallelSequenceProcessor'
+]

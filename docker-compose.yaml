@@ -1,0 +1,12 @@
+# docker-compose.yml
+version: '3'
+services:
+  papa-smorf:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+    command: ["--fasta_dir", "/app/data/fasta", 
+              "--gff_dir", "/app/data/gff", 
+              "--output_dir", "/app/data/processed"]

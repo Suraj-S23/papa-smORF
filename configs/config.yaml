@@ -5,10 +5,6 @@ preprocessing:
     gff_dir: "data/gff"
   output:
     dir: "data/processed"
-  features:
-    - sequence
-    - sample_id
-    - chunk_id
-    - target
-    - orf_positions
-    - start_codon_positions
+  logging:
+    level: "INFO"
+    file: "logs/preprocessing.log"
