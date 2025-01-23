@@ -1,8 +1,8 @@
 preprocessing:
   chunk_size: 5000
   input:
-    fasta_dir: "data/fasta"
-    gff_dir: "data/gff"
+    fasta_dir: "data/10_fasta"
+    gff_dir: "data/10_gff"
   output:
     dir: "data/processed"
   logging:

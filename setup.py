@@ -1,4 +1,3 @@
-# setup.py
 from setuptools import setup, find_packages
 
 setup(
@@ -14,5 +13,6 @@ setup(
         'seaborn>=0.11.0',
         'tqdm>=4.65.0',
         'pytest>=7.0.0',
-    ],
+        'psutil>=5.9.0'  
+    ]
 )

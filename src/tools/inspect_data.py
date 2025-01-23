@@ -1,34 +1,64 @@
 import pandas as pd
-import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from src.preprocessing.sequence_processor import SequenceProcessor
+from pathlib import Path
+from src.preprocessing.utils import MMapHandler
+import mmap
+import logging
 
-def inspect_processed_data(processed_dir):
-    """Inspect processed data with better error handling"""
-    try:
-        index_file = os.path.join(processed_dir, 'chunk_index.csv')
-        if not os.path.exists(index_file):
-            print(f"\nNo chunk index found at {index_file}")
-            # Try to find any processed files
-            pkl_files = list(Path(processed_dir).glob('*.pkl'))
-            if pkl_files:
-                print(f"Found {len(pkl_files)} processed files but no index.")
-                return
-            else:
-                print("No processed files found.")
-                return
-            
-        chunk_df = pd.read_csv(index_file)
-        print("\nProcessed Data Summary:")
-        print(f"Total chunks: {len(chunk_df)}")
-        print(f"Total samples: {chunk_df['sample_id'].nunique()}")
-        print(f"Total ORFs: {chunk_df['n_orfs'].sum():,}")
-        print("\nPer-sample statistics:")
-        print(chunk_df.groupby('sample_id')['n_orfs'].sum().to_string())
+
+class DataInspector:
+    def __init__(self):
+        self.mmap_handler = MMapHandler()
+
+    def inspect_processed_data(self, processed_dir):
+        """Inspect processed data using memory mapping"""
+        processed_dir = Path(processed_dir)
+        mmap_files = list(processed_dir.glob('*.mmap'))
         
-    except Exception as e:
-        print(f"Error inspecting data: {str(e)}")
+        if not mmap_files:
+            print(f"No processed files found in {processed_dir}")
+            return
+        
+        total_orfs = 0
+        total_sequences = 0
+        sequence_stats = []
+        
+        for mmap_file in mmap_files:
+            with open(mmap_file, 'rb') as f:
+                mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+                metadata = self.mmap_handler.read_metadata(mm)
+                
+                sequence_stats.append({
+                    'sample_id': metadata['sample_id'],
+                    'sequence_length': metadata['sequence_length'],
+                    'n_orfs': metadata['n_orfs'],
+                    'n_start_codons': metadata['n_start_codons']
+                })
+                
+                total_orfs += metadata['n_orfs']
+                total_sequences += 1
+                mm.close()
+        
+        stats_df = pd.DataFrame(sequence_stats)
+        
+        print("\nProcessed Data Summary:")
+        print(f"Total sequences: {total_sequences}")
+        print(f"Total ORFs: {total_orfs:,}")
+        print(f"\nSequence Statistics:")
+        print(f"Average sequence length: {stats_df['sequence_length'].mean():,.0f}")
+        print(f"Average ORFs per sequence: {stats_df['n_orfs'].mean():,.1f}")
+        
+        return stats_df
 
-if __name__ == "__main__":
-    inspect_processed_data("data/processed")
+    def get_sequence_region(self, mmap_file, start, end):
+        """Get specific region from sequence"""
+        with open(mmap_file, 'rb') as f:
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            metadata = self.mmap_handler.read_metadata(mm)
+            
+            sequence = self.mmap_handler.read_sequence_data(
+                mm,
+                metadata['offsets']['sequence'] + start,
+                end - start
+            )
+            mm.close()
+            return sequence
