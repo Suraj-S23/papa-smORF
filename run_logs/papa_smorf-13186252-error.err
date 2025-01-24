@@ -1,0 +1,59 @@
+cpu-bind=MASK - dlcgpu17, task  0  0 [4705]: mask 0xff000000ff000000 set
+  DEPRECATION: Legacy editable install of papa_smorf==0.1.0 from file:///work/dlclarge1/subramas-smorf_thesis/papa_smorf/papa-smORF (setup.py develop) is deprecated. pip 25.0 will enforce this behaviour change. A possible replacement is to add a pyproject.toml or enable --use-pep517, and use setuptools >= 64. If the resulting installation is not behaving as expected, try using --config-settings editable_mode=compat. Please consult the setuptools documentation for more information. Discussion can be found at https://github.com/pypa/pip/issues/11457
+Starting pipeline...
+Processing sequences...
+Found 10 FASTA-GFF pairs to process
+
+=== Processing Batch 1/1 (100.0% complete) ===
+Successfully parsed data/10_fasta/GCA_000146025.1_ASM14602v1_genomic.fna
+Successfully parsed data/10_fasta/GCA_000189775.3_ASM18977v3_genomic.fna
+Successfully parsed data/10_fasta/GCA_000147695.3_ASM14769v3_genomic.fna
+Successfully parsed data/10_fasta/GCA_000146065.1_ASM14606v1_genomic.fna
+Successfully parsed data/10_gff/GCA_000146025.1_ASM14602v1_genomic.gff
+Processing sequence AP009510.1
+Successfully parsed data/10_fasta/GCA_000184345.2_ASM18434v2_genomic.fna
+Successfully parsed data/10_fasta/GCA_000224005.3_ASM22400v3_genomic.fna
+Successfully parsed data/10_fasta/GCA_000190735.2_ASM19073v2_genomic.fna
+Successfully parsed data/10_fasta/GCA_000165715.3_ASM16571v3_genomic.fna
+Successfully parsed data/10_fasta/GCA_000157895.2_ASM15789v2_genomic.fna
+Successfully parsed data/10_fasta/GCA_000227665.3_ASM22766v3_genomic.fna
+Processed sequence AP009510.1: Found 16888 ORFs, 16888 start codons
+Processing sequence AP009511.1
+Processed sequence AP009511.1: Found 241 ORFs, 241 start codons
+Processing sequence AP009512.1
+Processed sequence AP009512.1: Found 107 ORFs, 107 start codons
+Processing sequence AP009513.1
+Processed sequence AP009513.1: Found 109 ORFs, 109 start codons
+Successfully parsed data/10_gff/GCA_000146065.1_ASM14606v1_genomic.gff
+Processing sequence CU466930.1
+Processed sequence CU466930.1: Found 32600 ORFs, 32600 start codons
+Successfully parsed data/10_gff/GCA_000147695.3_ASM14769v3_genomic.gff
+Processing sequence CP002991.1
+Processed sequence CP002991.1: Found 46378 ORFs, 46380 start codons
+Successfully parsed data/10_gff/GCA_000157895.2_ASM15789v2_genomic.gff
+Processing sequence CP006835.1
+Processed sequence CP006835.1: Found 72774 ORFs, 72774 start codons
+Processing sequence CP006836.1
+Processed sequence CP006836.1: Found 1415 ORFs, 1419 start codons
+Successfully parsed data/10_gff/GCA_000165715.3_ASM16571v3_genomic.gff
+Processing sequence CP002546.1
+Processed sequence CP002546.1: Found 81824 ORFs, 81824 start codons
+Successfully parsed data/10_gff/GCA_000184345.2_ASM18434v2_genomic.gff
+Processing sequence CP002903.1
+Processed sequence CP002903.1: Found 35889 ORFs, 35892 start codons
+Successfully parsed data/10_gff/GCA_000189775.3_ASM18977v3_genomic.gff
+Processing sequence CP002739.1
+Processed sequence CP002739.1: Found 53424 ORFs, 53424 start codons
+Successfully parsed data/10_gff/GCA_000190735.2_ASM19073v2_genomic.gff
+Processing sequence CP002545.1
+Processed sequence CP002545.1: Found 76614 ORFs, 76625 start codons
+Successfully parsed data/10_gff/GCA_000224005.3_ASM22400v3_genomic.gff
+Processing sequence CP007031.1
+Processed sequence CP007031.1: Found 43098 ORFs, 43099 start codons
+Successfully parsed data/10_gff/GCA_000227665.3_ASM22766v3_genomic.gff
+Processing sequence CP007030.1
+Processed sequence CP007030.1: Found 38192 ORFs, 38192 start codons
+Error saving progress: name 'psutil' is not defined
+Progress: 10/10 files (100.0% complete)
+Total ORFs found so far: 499,553
+Pipeline completed successfully in 0:00:20.675837

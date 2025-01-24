@@ -65,13 +65,19 @@ class ParallelSequenceProcessor:
             self.logger.error(f"Error saving memory-mapped data for {chunk_id}: {str(e)}")
             raise
 
-    def _save_progress(self, results, output_dir):
-        """Save processing progress"""
+    def _save_progress(self, results, output_dir, progress_info):
+        """Save detailed progress information"""
         try:
             progress_data = {
-                'processed_files': len(results),
-                'total_orfs': sum(result.get('n_orfs', 0) for result in results),
-                'timestamp': str(datetime.now())
+                'timestamp': str(datetime.now()),
+                'processed_files': progress_info['processed_files'],
+                'total_files': progress_info['total_files'],
+                'completion_percentage': progress_info['completion_percentage'],
+                'current_batch': progress_info['current_batch'],
+                'total_batches': progress_info['total_batches'],
+                'total_orfs': sum(r.get('n_orfs', 0) for r in results),
+                'memory_usage': psutil.Process().memory_info().rss / 1024 / 1024 / 1024,  # GB
+                'cpu_usage': psutil.Process().cpu_percent()
             }
             
             progress_file = Path(output_dir) / 'progress.json'
@@ -104,19 +110,40 @@ class ParallelSequenceProcessor:
         return batch_results
 
     def process_all(self, fasta_dir, gff_dir, output_dir):
-        """Process all files in batches"""
+        """Process all files with detailed progress tracking"""
         file_pairs = get_file_pairs(fasta_dir, gff_dir)
-        self.logger.info(f"Found {len(file_pairs)} FASTA-GFF pairs to process")
+        total_pairs = len(file_pairs)
         
+        self.logger.info(f"Found {total_pairs} FASTA-GFF pairs to process")
+        
+        processed_count = 0
         all_results = []
-        for i in range(0, len(file_pairs), self.batch_size):
+        
+        for i in range(0, total_pairs, self.batch_size):
             batch = file_pairs[i:i + self.batch_size]
-            self.logger.info(f"Processing batch {i//self.batch_size + 1}")
+            current_batch = i//self.batch_size + 1
+            total_batches = (total_pairs - 1)//self.batch_size + 1
+            
+            self.logger.info(f"\n=== Processing Batch {current_batch}/{total_batches} "
+                           f"({(current_batch/total_batches)*100:.1f}% complete) ===")
             
             batch_results = self.process_batch(batch, output_dir)
             all_results.extend(batch_results)
             
-            # Save progress
-            self._save_progress(all_results, output_dir)
+            processed_count += len(batch)
+            
+            # Save and display progress
+            self._save_progress(all_results, output_dir, {
+                'total_files': total_pairs,
+                'processed_files': processed_count,
+                'completion_percentage': (processed_count/total_pairs)*100,
+                'current_batch': current_batch,
+                'total_batches': total_batches
+            })
+            
+            self.logger.info(f"Progress: {processed_count}/{total_pairs} files "
+                           f"({(processed_count/total_pairs)*100:.1f}% complete)")
+            self.logger.info(f"Total ORFs found so far: {sum(r.get('n_orfs', 0) for r in all_results):,}")
         
         return all_results
+
