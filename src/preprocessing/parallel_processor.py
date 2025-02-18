@@ -1,149 +1,99 @@
+# src/preprocessing/parallel_processor.py
+import h5py
 from concurrent.futures import ProcessPoolExecutor
-import multiprocessing
 from pathlib import Path
-from datetime import datetime
-import pickle
+import uuid
 from tqdm import tqdm
-import logging
-import json
-import numpy as np
-import mmap  # Added this import
-from src.preprocessing.sequence_processor import SequenceProcessor
-from src.preprocessing.utils import setup_logger, get_file_pairs, MMapHandler
+from collections import defaultdict
+from typing import List, Dict, Any, Tuple
+import os
+from .utils import setup_logger, get_file_pairs
+from .sequence_processor import SequenceProcessor, ORFMetadata
 
 class ParallelSequenceProcessor:
-    def __init__(self, n_workers=None, batch_size=100):
-        self.n_workers = n_workers or multiprocessing.cpu_count()
+    def __init__(self, n_workers=None, chunk_size=10000, batch_size=100):
+        self.n_workers = n_workers or os.cpu_count()
+        self.chunk_size = chunk_size
         self.batch_size = batch_size
-        self.processor = SequenceProcessor()
+        self.processor = SequenceProcessor(chunk_size=chunk_size)
+        self.tmp_dir = "tmp_hdf5_chunks"
         self.logger = setup_logger('parallel_processor')
-        self.mmap_handler = MMapHandler()
+        Path(self.tmp_dir).mkdir(exist_ok=True)
 
-    def save_result_mmap(self, result, output_dir):
-        """Save processed data using memory mapping"""
-        chunk_id = result['chunk_id']
-        output_path = Path(output_dir) / f"{chunk_id}.mmap"
-        
+    def _process_single_pair(self, pair: dict) -> dict:
+        """Process a single FASTA-GFF pair with ORF tracking"""
         try:
-            # Calculate sizes and offsets
-            sequence = result['sequence']
-            seq_size = len(sequence)
-            orf_size = len(result['orf_positions']) * 8
-            start_codon_size = len(result['start_codon_positions']) * 4
-            
-            total_size = self.mmap_handler.header_size + seq_size + orf_size + start_codon_size
-            
-            metadata = {
-                'chunk_id': chunk_id,
-                'sample_id': result['sample_id'],
-                'sequence_length': seq_size,
-                'n_orfs': len(result['orf_positions']),
-                'n_start_codons': len(result['start_codon_positions']),
-                'offsets': {
-                    'sequence': self.mmap_handler.header_size,
-                    'orf_positions': self.mmap_handler.header_size + seq_size,
-                    'start_codons': self.mmap_handler.header_size + seq_size + orf_size
-                }
-            }
-            
-            # Create and write to memory-mapped file
-            with self.mmap_handler.create_mmap_file(output_path, total_size) as f:
-                mm = mmap.mmap(f.fileno(), 0)
-                
-                # Write data
-                self.mmap_handler.write_metadata(mm, metadata)
-                self.mmap_handler.write_sequence_data(mm, metadata['offsets']['sequence'], sequence)
-                self.mmap_handler.write_numeric_data(mm, metadata['offsets']['orf_positions'], result['orf_positions'])
-                self.mmap_handler.write_numeric_data(mm, metadata['offsets']['start_codons'], result['start_codon_positions'])
-                
-                mm.flush()
-                mm.close()
-                
-            return metadata
-            
+            annotations = defaultdict(list)
+            for ann in self.processor.parse_gff_generator(pair['gff']):
+                if isinstance(ann, ORFMetadata):
+                    annotations[ann.seqid].append(ann)
+            chunks_data = defaultdict(list)
+            file_stem = Path(pair['fasta']).stem
+            for seq_id, seq in self.processor.parse_fasta_generator(pair['fasta']):
+                unique_id = f"{file_stem}_{seq_id}"
+                seq_ann = [a for a in annotations.get(seq_id, []) 
+                           if a.start <= len(seq) and a.end <= len(seq)]
+                target, orf_map = self.processor.create_orf_regions(seq, seq_ann)
+                chunks = self.processor.chunk_sequence_with_orfs(seq, target, orf_map, self.chunk_size)
+                for chunk in chunks:
+                    chunk_id = f"{unique_id}_{chunk['chunk_id']}"
+                    chunks_data[unique_id].append((chunk_id, chunk))
+            return chunks_data
         except Exception as e:
-            self.logger.error(f"Error saving memory-mapped data for {chunk_id}: {str(e)}")
+            self.logger.error(f"Error processing {pair['fasta']}: {str(e)}")
             raise
 
-    def _save_progress(self, results, output_dir, progress_info):
-        """Save detailed progress information"""
+    def process_batch(self, file_pairs: List[dict], output_file: str):
+        """Process a batch of files with error handling"""
+        batch_id = uuid.uuid4().hex[:8]
+        tmp_file = Path(self.tmp_dir) / f"batch_{batch_id}.h5"
         try:
-            progress_data = {
-                'timestamp': str(datetime.now()),
-                'processed_files': progress_info['processed_files'],
-                'total_files': progress_info['total_files'],
-                'completion_percentage': progress_info['completion_percentage'],
-                'current_batch': progress_info['current_batch'],
-                'total_batches': progress_info['total_batches'],
-                'total_orfs': sum(r.get('n_orfs', 0) for r in results),
-                'memory_usage': psutil.Process().memory_info().rss / 1024 / 1024 / 1024,  # GB
-                'cpu_usage': psutil.Process().cpu_percent()
-            }
-            
-            progress_file = Path(output_dir) / 'progress.json'
-            with open(progress_file, 'w') as f:
-                json.dump(progress_data, f, indent=2)
-                
-        except Exception as e:
-            self.logger.error(f"Error saving progress: {str(e)}")
-
-    def process_batch(self, file_pairs, output_dir):
-        """Process a batch of files"""
-        batch_results = []
-        with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
-            futures = [executor.submit(self.processor.parse_fasta_mmap, pair['fasta']) 
-                      for pair in file_pairs]
-            
-            for future, pair in zip(futures, file_pairs):
-                try:
-                    sequences = future.result()
-                    annotations = self.processor.parse_gff_mmap(pair['gff'])
+            with h5py.File(tmp_file, 'w') as hdf:
+                with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+                    futures = [executor.submit(self._process_single_pair, pair) 
+                               for pair in file_pairs]
                     
-                    results = self.processor.process_sequences(sequences, annotations)
-                    for result in results:
-                        metadata = self.save_result_mmap(result, output_dir)
-                        batch_results.append(metadata)
-                        
-                except Exception as e:
-                    self.logger.error(f"Error processing {pair}: {str(e)}")
-        
-        return batch_results
+                    for future in tqdm(futures, desc=f"Batch {batch_id}"):
+                        try:
+                            chunks_data = future.result()
+                            for seq_id, chunks in chunks_data.items():
+                                seq_group = hdf.require_group(seq_id)
+                                for chunk_id, data in chunks:
+                                    chunk_group = seq_group.create_group(chunk_id)
+                                    self.processor._store_chunk(chunk_group, data)
+                        except Exception as e:
+                            self.logger.error(f"Failed to process chunk: {str(e)}")
+            
+            self._merge_hdf5_chunks(tmp_file, output_file)
+            
+        finally:
+            if tmp_file.exists():
+                tmp_file.unlink()
 
-    def process_all(self, fasta_dir, gff_dir, output_dir):
-        """Process all files with detailed progress tracking"""
+    def _merge_hdf5_chunks(self, src_file: Path, dest_file: str):
+        """Atomic HDF5 merging with progress tracking"""
+        try:
+            with h5py.File(src_file, 'r') as src, h5py.File(dest_file, 'a') as dest:
+                for seq_id in tqdm(src.keys(), desc="Merging"):
+                    if seq_id in dest:
+                        del dest[seq_id]
+                    src.copy(seq_id, dest)
+        except Exception as e:
+            self.logger.error(f"Merging failed: {str(e)}")
+            raise
+
+    def process_all(self, fasta_dir: str, gff_dir: str, output_file: str):
+        """Robust processing with empty file check"""
         file_pairs = get_file_pairs(fasta_dir, gff_dir)
-        total_pairs = len(file_pairs)
+        Path(output_file).unlink(missing_ok=True)
         
-        self.logger.info(f"Found {total_pairs} FASTA-GFF pairs to process")
+        batches = [file_pairs[i:i+self.batch_size] 
+                   for i in range(0, len(file_pairs), self.batch_size)]
         
-        processed_count = 0
-        all_results = []
-        
-        for i in range(0, total_pairs, self.batch_size):
-            batch = file_pairs[i:i + self.batch_size]
-            current_batch = i//self.batch_size + 1
-            total_batches = (total_pairs - 1)//self.batch_size + 1
+        for batch in tqdm(batches, desc="Processing batches"):
+            self.process_batch(batch, output_file)
             
-            self.logger.info(f"\n=== Processing Batch {current_batch}/{total_batches} "
-                           f"({(current_batch/total_batches)*100:.1f}% complete) ===")
-            
-            batch_results = self.process_batch(batch, output_dir)
-            all_results.extend(batch_results)
-            
-            processed_count += len(batch)
-            
-            # Save and display progress
-            self._save_progress(all_results, output_dir, {
-                'total_files': total_pairs,
-                'processed_files': processed_count,
-                'completion_percentage': (processed_count/total_pairs)*100,
-                'current_batch': current_batch,
-                'total_batches': total_batches
-            })
-            
-            self.logger.info(f"Progress: {processed_count}/{total_pairs} files "
-                           f"({(processed_count/total_pairs)*100:.1f}% complete)")
-            self.logger.info(f"Total ORFs found so far: {sum(r.get('n_orfs', 0) for r in all_results):,}")
-        
-        return all_results
-
+        # Final validation
+        with h5py.File(output_file, 'r') as f:
+            if not f.keys():
+                raise ValueError("No sequences processed - check input files and error logs")

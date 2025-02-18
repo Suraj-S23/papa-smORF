@@ -174,3 +174,8 @@ cython_debug/
 data/large_fasta
 data/large_gff
 data/large_processed
+
+# Analysis
+src/analysis
+src/test
+
